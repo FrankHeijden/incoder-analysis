@@ -1,0 +1,11 @@
+.env
+.idea/
+.gradle/
+repositories.json
+repositories/
+repository-files/
+dataset/
+output/
+*.iml
+*.zip
+token-frequencies.json

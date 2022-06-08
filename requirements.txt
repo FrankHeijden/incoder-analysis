@@ -1,0 +1,8 @@
+numpy
+tqdm
+torch
+transformers
+datasets
+joblib
+stringcase
+pyparsing
