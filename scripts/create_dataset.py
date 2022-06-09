@@ -36,7 +36,9 @@ def _process_file_content(file_content: str, file: str, dir_path: str) -> None:
         i = 0
         while i < right_context_length and right_context[i] not in stop_tokens:
             i += 1
-        ground_truth = right_context[:i]
+        ground_truth = decode(right_context[:i]).strip()
+        if ground_truth == "":
+            continue
         right_context = right_context[i:]
 
         if len(file) > 240:
@@ -51,7 +53,7 @@ def _process_file_content(file_content: str, file: str, dir_path: str) -> None:
                     "left_context": decode(util.truncate_left_context(left_context, 1000)),
                     "right_context": decode(util.truncate_right_context(right_context, 1000)),
                 },
-                "ground_truth": decode(ground_truth),
+                "ground_truth": ground_truth,
             }, f)
 
 
@@ -90,7 +92,7 @@ def create_dataset() -> None:
     print("Merging dataset")
     Parallel(n_jobs=os.cpu_count(), verbose=1)(delayed(util.merge_files_in_dir)(
         f"../dataset/{dataset}/{language}",
-        f"../dataset/{dataset}/{language}/data.json",
+        f"../dataset/{dataset}/{language}/data.jsonl",
         delete_files=True
     ) for (dataset, language) in datasets)
 
