@@ -4,8 +4,10 @@
 repositories.json
 repositories/
 repository-files/
-dataset/
-output/
+dataset*/
+output*/
 *.iml
 *.zip
+*.tar.*
+*.txt
 token-frequencies.json
