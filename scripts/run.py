@@ -8,6 +8,8 @@ from typing import List
 
 import incoder
 
+batch_count = 4
+
 
 def _run_data(data: str) -> str:
     left_context_only = data["left_context_only"]
@@ -23,17 +25,15 @@ def _run_data(data: str) -> str:
 
 
 def _process_data_batch(data_batch: List[str], data_path: str, i: int, j: int) -> None:
-    batch_length = len(data_batch)
-    if batch_length == 0:
-        return
+    output_file = f"../output/{data_path}/data-{i}-{j}.jsonl"
+    line_count = 0
+    if os.path.exists(output_file):
+        with open(output_file, "r") as f:
+            for line_count, _ in enumerate(f):
+                pass
 
-    with open(f"../output/{data_path}/data-{i}-{j}.jsonl", "a") as f_out:
-        percentage_done = 0
-        for k, data_str in enumerate(data_batch):
-            percentage_done_new = int(100.0 * k / batch_length)
-            if percentage_done != percentage_done_new:
-                percentage_done = percentage_done_new
-                print(f"Batch {j}: {percentage_done}%")
+    with open(output_file, "a") as f_out:
+        for data_str in data_batch[line_count:]:
             f_out.write(json.dumps(_run_data(json.loads(data_str))) + "\n")
 
 
@@ -42,7 +42,6 @@ def run(data_path: str, n: int, i: int) -> None:
 
     with open(f"../dataset/{data_path}/data.jsonl", "r") as f:
         lines = f.readlines()[i::n]
-        batch_count = 4
         Parallel(n_jobs=batch_count, verbose=1)(delayed(_process_data_batch)(
             lines[j::batch_count],
             data_path,
