@@ -5,7 +5,8 @@ import os
 from joblib import Parallel, delayed
 from transformers import AutoTokenizer
 from typing import Dict, List, Any, Optional
-from run import batch_count
+# from run import batch_count
+batch_count = 4
 
 import util
 
@@ -93,4 +94,4 @@ def print_metrics(output_dir: str) -> None:
 if __name__ == '__main__':
     outputs = [item for item in itertools.product(["raw", "without-comments"], ["python", "javascript"])]
     for (dataset, language) in outputs:
-        print_metrics(f"output/{dataset}/{language}")
+        print_metrics(f"../output/{dataset}/{language}")
