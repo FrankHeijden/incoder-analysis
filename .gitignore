@@ -10,4 +10,5 @@ output*/
 *.zip
 *.tar.*
 *.txt
+!requirements.txt
 token-frequencies.json
