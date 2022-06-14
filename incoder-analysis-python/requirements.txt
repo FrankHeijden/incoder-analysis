@@ -6,3 +6,6 @@ datasets
 joblib
 stringcase
 pyparsing
+rouge-score
+Levenshtein
+nltk

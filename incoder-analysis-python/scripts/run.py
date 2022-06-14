@@ -11,7 +11,7 @@ import incoder
 batch_count = 4
 
 
-def _run_data(data: str) -> str:
+def _run_data(data: dict) -> dict:
     left_context_only = data["left_context_only"]
     t_bf = time.time()
     left_context_only["prediction"] = incoder.generate(left_context_only["left_context"], "")

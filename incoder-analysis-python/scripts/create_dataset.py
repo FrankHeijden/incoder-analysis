@@ -4,7 +4,7 @@ import random
 import uuid
 import pyparsing
 import itertools
-from typing import List
+from typing import List, Union
 
 import numpy as np
 from joblib import Parallel, delayed
@@ -19,12 +19,16 @@ samples_per_file = 10
 languages = ["python", "javascript"]
 
 
-def decode(context: List[int]) -> str:
+def decode(context: Union[List[int], int]) -> str:
     return tokenizer.decode(context, clean_up_tokenization_spaces=False, skip_special_tokens=True)
 
 
+def encode(text: str) -> List[int]:
+    return tokenizer(text, max_length=1000000, truncation=True).input_ids
+
+
 def _process_file_content(file_content: str, file: str, dir_path: str) -> None:
-    tokens = tokenizer(file_content, max_length=1000000, truncation=True).input_ids
+    tokens = encode(file_content)
     token_count = len(tokens)
 
     for _ in range(samples_per_file):

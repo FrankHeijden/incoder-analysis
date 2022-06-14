@@ -2,22 +2,36 @@ import itertools
 import json
 import numpy as np
 import os
+import util
 from joblib import Parallel, delayed
 from transformers import AutoTokenizer
 from typing import Dict, List, Any, Optional
+from create_dataset import encode, decode
+
+import Levenshtein
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.translate.meteor_score import meteor_score
+from rouge_score import rouge_scorer
+
 # from run import batch_count
 batch_count = 4
 
-import util
-
 tokenizer = AutoTokenizer.from_pretrained("facebook/incoder-1B")
 
+rougeL_scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
 
-def print_context_metrics(metrics: tuple[float, float, float, float]) -> None:
-    print(f" * Exact Match = {metrics[0]}%")
+
+def print_context_metrics(metrics: np.ndarray) -> None:
+    print(f" * Exact Match = {metrics[0] * 100}%")
     print(f" * Inference Time = {metrics[1] / batch_count}ms")
     print(f" * Input Length = {metrics[2]}")
     print(f" * Prediction Length = {metrics[3]}")
+    print(f" * BLEU-4 = {metrics[4]}")
+    print(f" * Levenshtein Distance = {metrics[5]}")
+    print(f" * METEOR = {metrics[6]}")
+    print(f" * RougeL Precision = {metrics[7]}")
+    print(f" * RougeL Recall = {metrics[8]}")
+    print(f" * RougeL F-measure = {metrics[9]}")
 
 
 def _parse(json_str: str) -> Optional[Dict[str, Any]]:
@@ -28,36 +42,45 @@ def _parse(json_str: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _calculate_context_metrics(all_data: List[Dict[str, Any]], context: str) -> tuple[float, float, float, float]:
-    exact_match = np.sum([
-        data[context]["prediction"] == data["ground_truth"].strip()
-        for data in all_data
-    ]) * 100
-    inference_time = np.sum([
-        data[context]["inference_time"]
-        for data in all_data
-    ])
-    input_token_length = np.sum([
-        len(tokenizer(data[context]["left_context"] + data[context].get("right_context", "")).input_ids)
-        for data in all_data
-    ])
-    prediction_token_length = np.sum([
-        len(tokenizer(data[context]["prediction"]).input_ids)
-        for data in all_data
-    ])
-    return np.array([
-        exact_match,
-        inference_time,
-        input_token_length,
-        prediction_token_length,
-    ])
+def _encode(text: str) -> List[str]:
+    return [decode(token) for token in encode(text)[1:]]
 
 
-def _calculate_metrics(output_dir: str, i: int, n: int) -> tuple[tuple[float, float], int]:
-    left_context_only_metrics = np.zeros(4)
-    both_context_metrics = np.zeros(4)
+def _calculate_data_metrics(data: Dict[str, Any], context: str) -> list:
+    context_data = data[context]
+
+    prediction = context_data["prediction"]
+    prediction_tokens = _encode(prediction)
+
+    ground_truth = data["ground_truth"]
+    ground_truth_tokens = _encode(ground_truth)
+
+    rougel_scores = rougeL_scorer.score(ground_truth, prediction)["rougeL"]
+    return [
+        float(context_data["prediction"] == data["ground_truth"].strip()),
+        context_data["inference_time"],
+        len(encode(context_data["left_context"] + context_data.get("right_context", ""))) - 1,
+        len(prediction_tokens),
+        sentence_bleu([ground_truth_tokens], prediction_tokens, smoothing_function=SmoothingFunction().method2),
+        Levenshtein.ratio(ground_truth, prediction),
+        meteor_score(references=[ground_truth_tokens], hypothesis=prediction_tokens),
+        rougel_scores.precision,
+        rougel_scores.recall,
+        rougel_scores.fmeasure,
+    ]
+
+
+def _calculate_context_metrics(all_data: List[Dict[str, Any]], context: str) -> np.ndarray:
+    return np.sum([_calculate_data_metrics(data, context) for data in all_data], axis=0)
+
+
+def _calculate_metrics(output_dir: str, i: int, n: int) -> np.ndarray:
+    left_context_only_metrics = np.zeros(10)
+    both_context_metrics = np.zeros(10)
     data_size = 0
     for file in util.get_files_in_dir(output_dir):
+        if not file.endswith(".jsonl"):
+            continue
         with open(file, "r") as f:
             lines = f.readlines()[i::n]
             all_data = [x for json_str in lines if (x := _parse(json_str)) is not None]
@@ -75,12 +98,12 @@ def _calculate_metrics(output_dir: str, i: int, n: int) -> tuple[tuple[float, fl
 
 def print_metrics(output_dir: str) -> None:
     print(f"Calculating '{output_dir}' metrics...")
-    batch_count = os.cpu_count()
-    metrics = sum(Parallel(n_jobs=batch_count, verbose=1)(delayed(_calculate_metrics)(
+    n_jobs = os.cpu_count()
+    metrics = sum(Parallel(n_jobs=n_jobs)(delayed(_calculate_metrics)(
         output_dir,
         i,
-        batch_count,
-    ) for i in range(batch_count)))
+        n_jobs,
+    ) for i in range(n_jobs)))
     metrics = metrics[0] / metrics[1]
 
     print(f"--- Metrics {output_dir} ---")
