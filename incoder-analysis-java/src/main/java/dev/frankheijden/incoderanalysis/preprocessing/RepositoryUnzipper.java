@@ -23,26 +23,17 @@ public class RepositoryUnzipper {
 
     private static final String REPOSITORIES_FOLDER = "repositories";
     private static final String REPOSITORY_FILES_FOLDER = "repository-files";
-    private static final List<String> FILE_EXTENSIONS = List.of(
-            ".py",
-            ".js"
-    );
 
-    private static boolean shouldUnzipFile(String fileName) {
-        for (String ext : FILE_EXTENSIONS) {
-            if (fileName.endsWith(ext)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
+    private final Path outputPath;
+    private final List<String> extensions;
     private final Set<String> contents;
     private final AtomicInteger files = new AtomicInteger();
     private final AtomicInteger duplicates = new AtomicInteger();
 
-    public RepositoryUnzipper() {
+    public RepositoryUnzipper(Path outputPath, List<String> extensions) {
+        this.outputPath = outputPath;
         this.contents = new HashSet<>();
+        this.extensions = extensions;
     }
 
     public void unzipRepository(Path repositoryPath) throws IOException {
@@ -66,18 +57,27 @@ public class RepositoryUnzipper {
                 return;
             }
 
-            Files.writeString(Paths.get(REPOSITORY_FILES_FOLDER).resolve(name.replace("/", "_")), text);
+            Files.writeString(outputPath.resolve(REPOSITORY_FILES_FOLDER).resolve(name.replace("/", "_")), text);
         } catch (IOException ex) {
             throw new RuntimeException(ex);
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        RepositoryUnzipper unzipper = new RepositoryUnzipper();
-        Files.createDirectories(Paths.get(REPOSITORY_FILES_FOLDER));
+    private boolean shouldUnzipFile(String fileName) {
+        for (String ext : extensions) {
+            if (fileName.endsWith(ext)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void execute(Path outputPath, List<String> extensions) throws IOException {
+        RepositoryUnzipper unzipper = new RepositoryUnzipper(outputPath, extensions);
+        Files.createDirectories(outputPath.resolve(REPOSITORY_FILES_FOLDER));
 
         ConcurrentLinkedQueue<Path> queue;
-        try (Stream<Path> repositoryPaths = Files.list(Paths.get(REPOSITORIES_FOLDER))) {
+        try (Stream<Path> repositoryPaths = Files.list(outputPath.resolve(REPOSITORIES_FOLDER))) {
             queue = repositoryPaths.collect(Collectors.toCollection(ConcurrentLinkedQueue::new));
         }
 

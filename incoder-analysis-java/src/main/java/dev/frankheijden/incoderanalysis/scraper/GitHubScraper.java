@@ -2,7 +2,6 @@ package dev.frankheijden.incoderanalysis.scraper;
 
 import com.google.common.io.CharStreams;
 import com.google.gson.Gson;
-import io.github.cdimascio.dotenv.Dotenv;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -11,12 +10,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
-import java.util.stream.IntStream;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 public class GitHubScraper {
 
@@ -24,35 +25,22 @@ public class GitHubScraper {
 
     private static final String BASE_URL = "https://api.github.com";
     private static final String SEARCH_REPOSITORIES_URL = BASE_URL + "/search/repositories?page={page}&q=language:{language}&stars:%3E0&sort=stars&per_page=100";
+    private static final int MAX_PAGES = 1;
+    private static final String COMMITS_URL = "/commits/{ref}";
     private static final String ZIP_REPOSITORY_URL = "/zipball/{ref}";
-    private static final List<String> LANGUAGES = List.of("python", "javascript");
-    private static final String REPOSITORIES_FILE = "repositories.json";
+    private static final String REPOSITORIES_FILE = "repositories.csv";
 
     public GitHubScraper() {
 
     }
 
-    public CompletableFuture<GitHubSearchRepositoriesResponse> fetchRepositories(
-            String token,
-            String language,
-            int page
-    ) {
-        CompletableFuture<GitHubSearchRepositoriesResponse> future = new CompletableFuture<>();
+    public static <T> CompletableFuture<T> fetchGitHubURL(String url, String token, Class<T> responseClass) {
+        CompletableFuture<T> future = new CompletableFuture<>();
 
         ForkJoinPool.commonPool().execute(() -> {
-            try {
-                Thread.sleep((page - 1) * 2000L);
-            } catch (InterruptedException ex) {
-                ex.printStackTrace();
-            }
-
             try (CloseableHttpClient client = HttpClients.createDefault()) {
-                HttpGet request = new HttpGet(SEARCH_REPOSITORIES_URL
-                        .replace("{language}", language)
-                        .replace("{page}", String.valueOf(page)));
-                System.out.println("GET " + request.getURI());
+                HttpGet request = new HttpGet(url);
                 request.addHeader("Authorization", "token " + token);
-
                 future.complete(client.execute(request, res -> {
                     try (
                             InputStream in = res.getEntity().getContent();
@@ -61,7 +49,7 @@ public class GitHubScraper {
                         if (res.getStatusLine().getStatusCode() != 200) {
                             throw new IOException(CharStreams.toString(reader));
                         }
-                        return gson.fromJson(reader, GitHubSearchRepositoriesResponse.class);
+                        return gson.fromJson(reader, responseClass);
                     }
                 }));
             } catch (IOException e) {
@@ -72,47 +60,96 @@ public class GitHubScraper {
         return future;
     }
 
-    public static void main(String[] args) throws IOException {
-        GitHubScraper scraper = new GitHubScraper();
-        Dotenv dotenv = Dotenv.load();
-        String token = dotenv.get("GITHUB_TOKEN");
+    public CompletableFuture<GitHubSearchRepositoriesResponse> fetchRepositories(
+            String token,
+            String language,
+            int page
+    ) {
+        return fetchGitHubURL(
+                SEARCH_REPOSITORIES_URL
+                        .replace("{language}", language)
+                        .replace("{page}", String.valueOf(page)),
+                token,
+                GitHubSearchRepositoriesResponse.class
+        );
+    }
 
-        List<String> responses = LANGUAGES.stream()
-                .flatMap(language -> IntStream.range(1, 10).mapToObj(page -> scraper.fetchRepositories(
-                        token,
+    public CompletableFuture<GithubRepoCommitsResponse> fetchRepoCommits(
+            String token,
+            String repoUrl,
+            String branch
+    ) {
+        return fetchGitHubURL(
+                repoUrl + COMMITS_URL.replace("{ref}", branch),
+                token,
+                GithubRepoCommitsResponse.class
+        );
+    }
+
+    public static void execute(Path outputPath, List<String> languages, String githubToken) throws IOException {
+        GitHubScraper scraper = new GitHubScraper();
+
+        List<GitHubSearchRepositoriesResponse.Repository> repositories = new ArrayList<>();
+        for (String language : languages) {
+            for (int page = 1; page <= MAX_PAGES; page++) {
+                System.out.println("[" + language + "] Fetching " + page + "/" + MAX_PAGES + "...");
+                GitHubSearchRepositoriesResponse response = scraper.fetchRepositories(
+                        githubToken,
                         language,
                         page
-                )))
-                .map(CompletableFuture::join)
-                .flatMap(res -> Arrays.stream(res.getItems())
-                        .map(repo -> repo.getUrl() + ZIP_REPOSITORY_URL.replace("{ref}", repo.getDefaultBranch())))
-                .toList();
-        Files.writeString(Paths.get(REPOSITORIES_FILE), gson.toJson(responses));
+                ).join();
+                repositories.addAll(List.of(response.items));
+
+//                try {
+//                    Thread.sleep(1000 * page);
+//                } catch (InterruptedException ex) {
+//                    ex.printStackTrace();
+//                }
+            }
+        }
+
+        AtomicInteger counter = new AtomicInteger(1);
+        int n = Runtime.getRuntime().availableProcessors();
+        @SuppressWarnings("unchecked")
+        CompletableFuture<List<String>>[] futures = new CompletableFuture[n];
+        for (int i = 0; i < n; i++) {
+            int offset = i;
+            futures[i] = CompletableFuture.supplyAsync(() -> {
+                List<String> output = new ArrayList<>();
+                for (int j = offset; j < repositories.size(); j += n) {
+                    GitHubSearchRepositoriesResponse.Repository repo = repositories.get(j);
+                    System.out.println("[" + counter.getAndIncrement() + "/" + repositories.size() + "] Fetching latest commit hash of repo '" + repo.url + "'...");
+
+                    String sha = scraper.fetchRepoCommits(githubToken, repo.url, repo.default_branch).join().sha;
+                    output.add(
+                            repo.full_name
+                                    + "," + repo.url + ZIP_REPOSITORY_URL.replace("{ref}", sha)
+                                    + "," + sha
+                    );
+                }
+                return output;
+            });
+        }
+        CompletableFuture.allOf(futures).join();
+        List<String> output = Stream.concat(
+                Stream.of("Full Name,Repository Download URL,Commit SHA1"),
+                Arrays.stream(futures)
+                        .flatMap(future -> future.join().stream())
+        ).toList();
+        Files.write(outputPath.resolve(REPOSITORIES_FILE), output);
     }
 
     public static class GitHubSearchRepositoriesResponse {
-
-        private Repository[] items;
-
-        public Repository[] getItems() {
-            return items;
-        }
+        public Repository[] items;
 
         public static class Repository {
-
-            private String default_branch;
-            private String url;
-
-            public String getDefaultBranch() {
-                if (default_branch == null) {
-                    System.out.println("NULL: " + url);
-                }
-                return default_branch;
-            }
-
-            public String getUrl() {
-                return url;
-            }
+            public String full_name;
+            public String default_branch;
+            public String url;
         }
+    }
+
+    public static class GithubRepoCommitsResponse {
+        public String sha;
     }
 }
