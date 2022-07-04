@@ -23,7 +23,7 @@ dependencies {
 
 tasks {
     blossom {
-        replaceToken("%%version%%", version, "src/main/java/dev/frankheijden/incoderanalysis/DataSetDownloader.java")
+        replaceToken("{version}", version, "src/main/java/dev/frankheijden/incoderanalysis/DataSetDownloader.java")
     }
 
     jar {

@@ -18,7 +18,7 @@ import java.util.concurrent.Callable;
 @CommandLine.Command(
         name = "dataset-downloader",
         mixinStandardHelpOptions = true,
-        version = "dataset-downloader %%VERSION%%",
+        version = "dataset-downloader {version}",
         description = "Downloads the top-1000 github repositories of specified language(s)"
 )
 public class DataSetDownloader implements Callable<Integer> {
