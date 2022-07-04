@@ -23,16 +23,16 @@ import java.util.concurrent.Callable;
 )
 public class DataSetDownloader implements Callable<Integer> {
 
-    @CommandLine.Option(names = {"-l", "--languages"}, description = "javascript, python, ...")
+    @CommandLine.Option(names = {"-l", "--languages"}, required = true, description = "javascript, python, ...")
     private String languagesString;
 
-    @CommandLine.Option(names = {"-e", "--extensions"}, description = "js, py, ...")
+    @CommandLine.Option(names = {"-e", "--extensions"}, required = true, description = "js, py, ...")
     private String extensionsString;
 
-    @CommandLine.Option(names = {"-o", "--output-directory"}, description = "The output directory")
+    @CommandLine.Option(names = {"-o", "--output-directory"}, required = true, description = "The output directory")
     private String outputDirectory;
 
-    @CommandLine.Option(names = {"-t", "--github-token"}, description = "GitHub token")
+    @CommandLine.Option(names = {"-t", "--github-token"}, required = true, description = "GitHub token")
     private String githubToken;
 
     private boolean isValid(String arg, String msg) {
