@@ -7,6 +7,7 @@ import io.github.cdimascio.dotenv.Dotenv;
 import io.github.cdimascio.dotenv.DotenvException;
 import picocli.CommandLine;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -82,7 +83,7 @@ public class DataSetDownloader implements Callable<Integer> {
         }
 
         Path outputPath = Paths.get(this.outputDirectory);
-        System.out.println(outputPath.toAbsolutePath());
+        Files.createDirectories(outputPath);
 
         System.out.println("Scraping top-1000 repositories...");
         GitHubScraper.execute(outputPath, languages, githubToken);
