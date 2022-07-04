@@ -100,11 +100,11 @@ public class GitHubScraper {
                 ).join();
                 repositories.addAll(List.of(response.items));
 
-//                try {
-//                    Thread.sleep(1000 * page);
-//                } catch (InterruptedException ex) {
-//                    ex.printStackTrace();
-//                }
+                try {
+                    Thread.sleep(1000 * page);
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                }
             }
         }
 
