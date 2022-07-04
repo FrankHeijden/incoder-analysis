@@ -18,7 +18,10 @@ import java.util.concurrent.Callable;
         name = "dataset-downloader",
         mixinStandardHelpOptions = true,
         version = "dataset-downloader {version}",
-        description = "Downloads the top-1000 github repositories of specified language(s)"
+        description = """
+                Downloads the top-1000 github repositories of specified language(s),
+                extracting their source files and creating a dataset for code language models.
+                """
 )
 public class DataSetDownloader implements Callable<Integer> {
 
@@ -59,7 +62,7 @@ public class DataSetDownloader implements Callable<Integer> {
                     "-t",
                     "--github-token"
             },
-            description = "GitHub token"
+            description = "The GitHub token used to allow for a larger api limit."
     )
     private String githubToken;
 
