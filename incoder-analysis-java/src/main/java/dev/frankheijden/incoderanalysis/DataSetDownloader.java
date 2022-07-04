@@ -7,10 +7,9 @@ import io.github.cdimascio.dotenv.Dotenv;
 import io.github.cdimascio.dotenv.DotenvException;
 import picocli.CommandLine;
 
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -23,25 +22,46 @@ import java.util.concurrent.Callable;
 )
 public class DataSetDownloader implements Callable<Integer> {
 
-    @CommandLine.Option(names = {"-l", "--languages"}, required = true, description = "javascript, python, ...")
-    private String languagesString;
+    @CommandLine.Option(
+            names = {
+                    "-l",
+                    "--languages",
+            },
+            required = true,
+            description = "The languages to search for on github (python, javascript, ...)",
+            arity = "1..*"
+    )
+    private String[] languages;
 
-    @CommandLine.Option(names = {"-e", "--extensions"}, required = true, description = "js, py, ...")
-    private String extensionsString;
+    @CommandLine.Option(
+            names = {
+                    "-e",
+                    "--extensions",
+            },
+            required = true,
+            description = "The extensions to unzip from the downloaded repositories (js, py, ...)",
+            arity = "1..*"
+    )
+    private String[] extensions;
 
-    @CommandLine.Option(names = {"-o", "--output-directory"}, required = true, description = "The output directory")
-    private String outputDirectory;
+    @CommandLine.Option(
+            names = {
+                    "-o",
+                    "--output-directory",
+            },
+            required = true,
+            description = "The output directory"
+    )
+    private File outputDirectory;
 
-    @CommandLine.Option(names = {"-t", "--github-token"}, required = true, description = "GitHub token")
+    @CommandLine.Option(
+            names = {
+                    "-t",
+                    "--github-token"
+            },
+            description = "GitHub token"
+    )
     private String githubToken;
-
-    private boolean isValid(String arg, String msg) {
-        if (arg == null || arg.isBlank()) {
-            System.err.println(msg);
-            return false;
-        }
-        return true;
-    }
 
     @Override
     public Integer call() throws Exception {
@@ -50,14 +70,6 @@ public class DataSetDownloader implements Callable<Integer> {
             dotenv = Dotenv.load();
         } catch (DotenvException ignored) {
             // ignored, it doesnt have to exist.
-        }
-
-        if (
-                !isValid(languagesString, "You must specify at least one language")
-                || !isValid(extensionsString, "You must specify at least one extension")
-                || !isValid(outputDirectory, "You must specify a directory to save the downloaded datasets")
-        ) {
-            return 1;
         }
 
         if (githubToken == null || githubToken.isBlank()) {
@@ -71,22 +83,26 @@ public class DataSetDownloader implements Callable<Integer> {
             }
         }
 
-        List<String> languages = Arrays.asList(languagesString.split(","));
+        List<String> allLanguages = Arrays.stream(languages)
+                .flatMap(l -> Arrays.stream(l.split(",")))
+                .map(String::trim)
+                .toList();
 
-        List<String> fileExtensions = new ArrayList<>();
-        for (String extension : extensionsString.split(",")) {
-            if (extension.isBlank()) continue;
-            if (!extension.startsWith(".")) {
-                extension = "." + extension;
-            }
-            fileExtensions.add(extension);
-        }
+        List<String> fileExtensions = Arrays.stream(extensions)
+                .filter(String::isBlank)
+                .map(e -> {
+                    if (e.startsWith(".")) {
+                        return e;
+                    }
+                    return "." + e;
+                })
+                .toList();
 
-        Path outputPath = Paths.get(this.outputDirectory);
+        Path outputPath = outputDirectory.toPath();
         Files.createDirectories(outputPath);
 
         System.out.println("Scraping top-1000 repositories...");
-        GitHubScraper.execute(outputPath, languages, githubToken);
+        GitHubScraper.execute(outputPath, allLanguages, githubToken);
 
         System.out.println("Downloading all repositories...");
         GitHubZipDownloader.execute(outputPath);

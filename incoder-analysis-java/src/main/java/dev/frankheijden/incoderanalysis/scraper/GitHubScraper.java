@@ -25,7 +25,7 @@ public class GitHubScraper {
 
     private static final String BASE_URL = "https://api.github.com";
     private static final String SEARCH_REPOSITORIES_URL = BASE_URL + "/search/repositories?page={page}&q=language:{language}&stars:%3E0&sort=stars&per_page=100";
-    private static final int MAX_PAGES = 1;
+    private static final int MAX_PAGES = 10;
     private static final String COMMITS_URL = "/commits/{ref}";
     private static final String ZIP_REPOSITORY_URL = "/zipball/{ref}";
     private static final String REPOSITORIES_FILE = "repositories.csv";
