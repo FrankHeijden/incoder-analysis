@@ -12,7 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @CommandLine.Command(
         name = "dataset-downloader",
@@ -86,20 +89,11 @@ public class DataSetDownloader implements Callable<Integer> {
             }
         }
 
-        List<String> allLanguages = Arrays.stream(languages)
-                .flatMap(l -> Arrays.stream(l.split(",")))
-                .map(String::trim)
+        List<String> allLanguages = splitOnComma(Arrays.stream(languages))
                 .toList();
 
-        List<String> fileExtensions = Arrays.stream(extensions)
-                .filter(String::isBlank)
-                .map(e -> {
-                    if (e.startsWith(".")) {
-                        return e;
-                    }
-                    return "." + e;
-                })
-                .toList();
+        Set<String> fileExtensions = splitOnComma(Arrays.stream(extensions))
+                .collect(Collectors.toSet());
 
         Path outputPath = outputDirectory.toPath();
         Files.createDirectories(outputPath);
@@ -115,6 +109,12 @@ public class DataSetDownloader implements Callable<Integer> {
 
         System.out.println("Done!");
         return 0;
+    }
+
+    private Stream<String> splitOnComma(Stream<String> stream) {
+        return stream.flatMap(l -> Arrays.stream(l.split(",")))
+                .map(String::trim)
+                .filter(s -> !s.isBlank());
     }
 
     public static void main(String[] args) {

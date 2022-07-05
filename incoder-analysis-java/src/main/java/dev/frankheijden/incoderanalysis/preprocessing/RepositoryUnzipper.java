@@ -1,19 +1,18 @@
 package dev.frankheijden.incoderanalysis.preprocessing;
 
+import com.google.common.hash.Hashing;
 import net.lingala.zip4j.ZipFile;
 import net.lingala.zip4j.io.inputstream.ZipInputStream;
 import net.lingala.zip4j.model.FileHeader;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -24,14 +23,10 @@ public class RepositoryUnzipper {
     private static final String REPOSITORY_FILES_FOLDER = "repository-files";
 
     private final Path outputPath;
-    private final List<String> extensions;
-    private final Set<String> contents;
-    private final AtomicInteger files = new AtomicInteger();
-    private final AtomicInteger duplicates = new AtomicInteger();
+    private final Set<String> extensions;
 
-    public RepositoryUnzipper(Path outputPath, List<String> extensions) {
+    public RepositoryUnzipper(Path outputPath, Set<String> extensions) {
         this.outputPath = outputPath;
-        this.contents = new HashSet<>();
         this.extensions = extensions;
     }
 
@@ -45,33 +40,25 @@ public class RepositoryUnzipper {
 
     private void unzipRepositoryFile(ZipFile zipFile, FileHeader header) {
         String name = header.getFileName();
-        if (!shouldUnzipFile(name)) return;
+        String extension = com.google.common.io.Files.getFileExtension(name);
+        if (!extensions.contains(extension)) return;
 
-        try (ZipInputStream in = zipFile.getInputStream(header)) {
-            files.incrementAndGet();
-
-            String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            if (!contents.add(text)) {
-                duplicates.incrementAndGet();
-                return;
-            }
-
-            Files.writeString(outputPath.resolve(REPOSITORY_FILES_FOLDER).resolve(name.replace("/", "_")), text);
+        Path repositoryFilesPath = outputPath.resolve(REPOSITORY_FILES_FOLDER);
+        String repositoryName = zipFile.getFile().getName();
+        repositoryName = repositoryName.substring(0, repositoryName.length() - ".zip".length());
+        String nameHash = Hashing.murmur3_128().hashBytes(name.getBytes(StandardCharsets.UTF_8)).toString();
+        Path outputPath = repositoryFilesPath.resolve(repositoryName + "-" + nameHash + "." + extension);
+        try (
+                ZipInputStream in = zipFile.getInputStream(header);
+                OutputStream out = Files.newOutputStream(outputPath)
+        ) {
+            in.transferTo(out);
         } catch (IOException ex) {
             throw new RuntimeException(ex);
         }
     }
 
-    private boolean shouldUnzipFile(String fileName) {
-        for (String ext : extensions) {
-            if (fileName.endsWith(ext)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static void execute(Path outputPath, List<String> extensions) throws IOException {
+    public static void execute(Path outputPath, Set<String> extensions) throws IOException {
         RepositoryUnzipper unzipper = new RepositoryUnzipper(outputPath, extensions);
         Files.createDirectories(outputPath.resolve(REPOSITORY_FILES_FOLDER));
 
@@ -94,11 +81,5 @@ public class RepositoryUnzipper {
                         }
                     }
                 })).toArray(CompletableFuture[]::new)).join();
-
-        System.out.println("--- Finished ---");
-        System.out.println("# Total Files = " + unzipper.files.get());
-        System.out.println("# Duplicates = " + unzipper.duplicates.get());
-        System.out.println("# Files = " + (unzipper.files.get() - unzipper.duplicates.get()));
-        System.out.println("--------");
     }
 }
