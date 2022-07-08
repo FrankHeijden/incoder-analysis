@@ -13,7 +13,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,8 +27,9 @@ public class GitHubScraper {
     private static final Gson gson = new Gson();
 
     private static final String BASE_URL = "https://api.github.com";
-    private static final String SEARCH_REPOSITORIES_URL = BASE_URL + "/search/repositories?page={page}&q=language:{language}&stars:%3E0&sort=stars&per_page=100";
+    private static final int PER_PAGE = 100;
     private static final int MAX_PAGES = 10;
+    private static final String SEARCH_REPOSITORIES_URL = BASE_URL + "/search/repositories?page={page}&q=language:{language}&sort={sort}&per_page=" + PER_PAGE;
     private static final String COMMITS_URL = "/commits/{ref}";
     private static final String ZIP_REPOSITORY_URL = "/zipball/{ref}";
     private static final String REPOSITORIES_FILE = "repositories.csv";
@@ -63,11 +67,13 @@ public class GitHubScraper {
     public CompletableFuture<GitHubSearchRepositoriesResponse> fetchRepositories(
             String token,
             String language,
+            String sort,
             int page
     ) {
         return fetchGitHubURL(
                 SEARCH_REPOSITORIES_URL
                         .replace("{language}", language)
+                        .replace("{sort}", sort)
                         .replace("{page}", String.valueOf(page)),
                 token,
                 GitHubSearchRepositoriesResponse.class
@@ -86,27 +92,40 @@ public class GitHubScraper {
         );
     }
 
-    public static void execute(Path outputPath, List<String> languages, String githubToken) throws IOException {
+    public static void execute(
+            Path outputPath,
+            Set<String> languages,
+            Set<String> sorts,
+            String githubToken
+    ) throws IOException {
         GitHubScraper scraper = new GitHubScraper();
 
-        List<GitHubSearchRepositoriesResponse.Repository> repositories = new ArrayList<>();
+        Set<GitHubSearchRepositoriesResponse.Repository> repositories = new HashSet<>();
         for (String language : languages) {
-            for (int page = 1; page <= MAX_PAGES; page++) {
-                System.out.println("[" + language + "] Fetching " + page + "/" + MAX_PAGES + "...");
-                GitHubSearchRepositoriesResponse response = scraper.fetchRepositories(
-                        githubToken,
-                        language,
-                        page
-                ).join();
-                repositories.addAll(List.of(response.items));
+            for (String sort : sorts) {
+                for (int page = 1; page <= MAX_PAGES; page++) {
+                    System.out.println("[" + language + "/" + sort + "] Fetching " + page + "/" + MAX_PAGES + "...");
+                    GitHubSearchRepositoriesResponse response = scraper.fetchRepositories(
+                            githubToken,
+                            language,
+                            sort,
+                            page
+                    ).join();
+                    repositories.addAll(Arrays.asList(response.items));
 
-                try {
-                    Thread.sleep(1000 * page);
-                } catch (InterruptedException ex) {
-                    ex.printStackTrace();
+                    try {
+                        Thread.sleep(6500); // 10 per minute
+                    } catch (InterruptedException ex) {
+                        ex.printStackTrace();
+                    }
                 }
             }
         }
+
+        List<GitHubSearchRepositoriesResponse.Repository> repositoryList = new ArrayList<>(repositories);
+        System.out.println("# Unique Repositories = " + repositoryList.size());
+        int duplicateRepositories = (languages.size() * PER_PAGE * MAX_PAGES) - repositoryList.size();
+        System.out.println("# Duplicate Repositories = " + duplicateRepositories);
 
         AtomicInteger counter = new AtomicInteger(1);
         int n = Runtime.getRuntime().availableProcessors();
@@ -116,9 +135,9 @@ public class GitHubScraper {
             int offset = i;
             futures[i] = CompletableFuture.supplyAsync(() -> {
                 List<String> output = new ArrayList<>();
-                for (int j = offset; j < repositories.size(); j += n) {
-                    GitHubSearchRepositoriesResponse.Repository repo = repositories.get(j);
-                    System.out.println("[" + counter.getAndIncrement() + "/" + repositories.size() + "] Fetching latest commit hash of repo '" + repo.url + "'...");
+                for (int j = offset; j < repositoryList.size(); j += n) {
+                    GitHubSearchRepositoriesResponse.Repository repo = repositoryList.get(j);
+                    System.out.println("[" + counter.getAndIncrement() + "/" + repositoryList.size() + "] Fetching latest commit hash of repo '" + repo.url + "'...");
 
                     String sha = scraper.fetchRepoCommits(githubToken, repo.url, repo.default_branch).join().sha;
                     output.add(
@@ -146,6 +165,21 @@ public class GitHubScraper {
             public String full_name;
             public String default_branch;
             public String url;
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) return true;
+                if (o == null || getClass() != o.getClass()) return false;
+                Repository that = (Repository) o;
+                return full_name.equals(that.full_name)
+                        && default_branch.equals(that.default_branch)
+                        && url.equals(that.url);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(full_name, default_branch, url);
+            }
         }
     }
 

@@ -11,11 +11,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @CommandLine.Command(
         name = "dataset-downloader",
@@ -38,6 +36,16 @@ public class DataSetDownloader implements Callable<Integer> {
             arity = "1..*"
     )
     private String[] languages;
+
+    @CommandLine.Option(
+            names = {
+                    "-s",
+                    "--sorts",
+            },
+            description = "The sorts to use when searching the GitHub API (stars, forks, help-wanted-issues, updated)",
+            defaultValue = "stars,forks"
+    )
+    private String[] sorts;
 
     @CommandLine.Option(
             names = {
@@ -89,17 +97,15 @@ public class DataSetDownloader implements Callable<Integer> {
             }
         }
 
-        List<String> allLanguages = splitOnComma(Arrays.stream(languages))
-                .toList();
-
-        Set<String> fileExtensions = splitOnComma(Arrays.stream(extensions))
-                .collect(Collectors.toSet());
+        Set<String> allLanguages = createOptionValues(languages);
+        Set<String> fileExtensions = createOptionValues(extensions);
+        Set<String> allSorts = createOptionValues(sorts);
 
         Path outputPath = outputDirectory.toPath();
         Files.createDirectories(outputPath);
 
         System.out.println("Scraping top-1000 repositories...");
-        GitHubScraper.execute(outputPath, allLanguages, githubToken);
+        GitHubScraper.execute(outputPath, allLanguages, allSorts, githubToken);
 
         System.out.println("Downloading all repositories...");
         GitHubZipDownloader.execute(outputPath);
@@ -111,10 +117,11 @@ public class DataSetDownloader implements Callable<Integer> {
         return 0;
     }
 
-    private Stream<String> splitOnComma(Stream<String> stream) {
-        return stream.flatMap(l -> Arrays.stream(l.split(",")))
+    private Set<String> createOptionValues(String[] rawValues) {
+        return Arrays.stream(rawValues).flatMap(l -> Arrays.stream(l.split("[, ]")))
                 .map(String::trim)
-                .filter(s -> !s.isBlank());
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toSet());
     }
 
     public static void main(String[] args) {
