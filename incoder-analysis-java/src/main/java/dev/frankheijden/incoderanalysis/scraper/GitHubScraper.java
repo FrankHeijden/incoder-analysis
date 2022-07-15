@@ -124,7 +124,7 @@ public class GitHubScraper {
 
         List<GitHubSearchRepositoriesResponse.Repository> repositoryList = new ArrayList<>(repositories);
         System.out.println("# Unique Repositories = " + repositoryList.size());
-        int duplicateRepositories = (languages.size() * PER_PAGE * MAX_PAGES) - repositoryList.size();
+        int duplicateRepositories = (languages.size() * sorts.size() * PER_PAGE * MAX_PAGES) - repositoryList.size();
         System.out.println("# Duplicate Repositories = " + duplicateRepositories);
 
         AtomicInteger counter = new AtomicInteger(1);
