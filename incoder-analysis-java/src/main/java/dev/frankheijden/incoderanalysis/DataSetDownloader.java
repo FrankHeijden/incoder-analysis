@@ -52,7 +52,6 @@ public class DataSetDownloader implements Callable<Integer> {
                     "-e",
                     "--extensions",
             },
-            required = true,
             description = "The extensions to unzip from the downloaded repositories (js, py, ...)",
             arity = "1..*"
     )
@@ -95,6 +94,10 @@ public class DataSetDownloader implements Callable<Integer> {
                 System.err.println("You must specify a GitHub token, either via an .env file or via CLI arguments.");
                 return 1;
             }
+        }
+
+        if (extensions == null) {
+            extensions = new String[0];
         }
 
         Set<String> allLanguages = createOptionValues(languages);

@@ -24,14 +24,21 @@ public class RepositoryUnzipper {
 
     private final Path outputPath;
     private final Set<String> extensions;
+    private final boolean extractAll;
 
     public RepositoryUnzipper(Path outputPath, Set<String> extensions) {
         this.outputPath = outputPath;
         this.extensions = extensions;
+        this.extractAll = extensions.size() == 0;
     }
 
     public void unzipRepository(Path repositoryPath) throws IOException {
         try (ZipFile zipFile = new ZipFile(repositoryPath.toFile())) {
+            if (extractAll) {
+                zipFile.extractAll(outputPath.resolve(REPOSITORY_FILES_FOLDER).toString());
+                return;
+            }
+
             for (FileHeader header : zipFile.getFileHeaders()) {
                 unzipRepositoryFile(zipFile, header);
             }
